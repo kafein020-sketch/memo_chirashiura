@@ -1,0 +1,231 @@
+
+<style>
+  .obs-wrap { font-family: var(--font-sans); max-width: 600px; margin: 0 auto; padding: 1.5rem 1rem; }
+  .obs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+  .obs-title { font-size: 14px; font-weight: 500; color: var(--color-text-secondary); letter-spacing: 0.08em; text-transform: uppercase; }
+  .obs-nav { display: flex; gap: 4px; }
+  .obs-navbtn { font-size: 13px; padding: 4px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); cursor: pointer; transition: all 0.15s; }
+  .obs-navbtn.active { background: var(--color-background-secondary); color: var(--color-text-primary); border-color: var(--color-border-secondary); }
+  .obs-navbtn:hover:not(.active) { background: var(--color-background-secondary); }
+  .obs-textarea { width: 100%; min-height: 56px; resize: none; font-size: 15px; line-height: 1.65; padding: 10px 12px; box-sizing: border-box; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); color: var(--color-text-primary); font-family: var(--font-sans); }
+  .obs-textarea:focus { outline: none; border-color: var(--color-border-secondary); }
+  .obs-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+  .obs-hint { font-size: 12px; color: var(--color-text-tertiary); }
+  .obs-addbtn { font-size: 13px; padding: 5px 14px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-primary); cursor: pointer; }
+  .obs-addbtn:hover { background: var(--color-background-secondary); }
+  .obs-addbtn:disabled { opacity: 0.35; cursor: default; }
+  .obs-divider { border: none; border-top: 0.5px solid var(--color-border-tertiary); margin: 1rem 0; }
+  .obs-observebtn { width: 100%; padding: 10px; font-size: 13px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); cursor: pointer; margin-bottom: 1.5rem; transition: all 0.15s; }
+  .obs-observebtn:hover:not(:disabled) { background: var(--color-background-secondary); color: var(--color-text-primary); border-color: var(--color-border-secondary); }
+  .obs-observebtn:disabled { opacity: 0.35; cursor: default; }
+  .obs-observebtn.pulsing { animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+  .obs-entry { padding: 10px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .obs-entry:last-child { border-bottom: none; }
+  .obs-entry-text { font-size: 15px; color: var(--color-text-primary); line-height: 1.65; margin: 0 0 4px 0; }
+  .obs-entry-date { font-size: 11px; color: var(--color-text-tertiary); }
+  .obs-card { padding: 1rem 1.25rem; border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); margin-bottom: 1rem; }
+  .obs-card-text { font-size: 14px; line-height: 1.9; color: var(--color-text-primary); margin: 0 0 10px 0; white-space: pre-wrap; }
+  .obs-card-meta { font-size: 11px; color: var(--color-text-tertiary); }
+  .obs-empty { text-align: center; color: var(--color-text-tertiary); font-size: 14px; padding: 2.5rem 0; line-height: 1.8; }
+  .obs-count-badge { font-size: 11px; color: var(--color-text-tertiary); margin-left: 4px; }
+</style>
+
+<div class="obs-wrap">
+  <h2 class="sr-only">思考の観察日誌 — 自由にメモして、AIにパターンを観察してもらうノート</h2>
+
+  <div class="obs-header">
+    <span class="obs-title">観察日誌</span>
+    <div class="obs-nav">
+      <button class="obs-navbtn active" id="btn-journal">メモ <span class="obs-count-badge" id="entry-count"></span></button>
+      <button class="obs-navbtn" id="btn-obs">観察 <span class="obs-count-badge" id="obs-count"></span></button>
+    </div>
+  </div>
+
+  <div id="view-journal">
+    <textarea class="obs-textarea" id="thought-input" placeholder="思いついたことをそのまま..."></textarea>
+    <div class="obs-row">
+      <span class="obs-hint">⌘ + Enter で追加</span>
+      <button class="obs-addbtn" id="add-btn" disabled>追加</button>
+    </div>
+    <hr class="obs-divider">
+    <button class="obs-observebtn" id="observe-btn" disabled>観察してもらう（2件以上必要）</button>
+    <div id="entries-list"></div>
+  </div>
+
+  <div id="view-obs" style="display:none;">
+    <div id="obs-list"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  let entries = [];
+  let observations = [];
+  let currentView = "journal";
+
+  const input = document.getElementById("thought-input");
+  const addBtn = document.getElementById("add-btn");
+  const observeBtn = document.getElementById("observe-btn");
+  const entriesList = document.getElementById("entries-list");
+  const obsList = document.getElementById("obs-list");
+  const viewJournal = document.getElementById("view-journal");
+  const viewObs = document.getElementById("view-obs");
+  const btnJournal = document.getElementById("btn-journal");
+  const btnObs = document.getElementById("btn-obs");
+  const entryCount = document.getElementById("entry-count");
+  const obsCount = document.getElementById("obs-count");
+
+  function formatDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) +
+      " " + d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function updateCounts() {
+    entryCount.textContent = entries.length > 0 ? entries.length : "";
+    obsCount.textContent = observations.length > 0 ? observations.length : "";
+  }
+
+  function renderEntries() {
+    updateCounts();
+    addBtn.disabled = !input.value.trim();
+    observeBtn.disabled = entries.length < 2;
+    if (entries.length < 2) {
+      observeBtn.textContent = "観察してもらう（2件以上必要）";
+    } else {
+      observeBtn.textContent = "観察してもらう →";
+    }
+
+    if (entries.length === 0) {
+      entriesList.innerHTML = '<p class="obs-empty">まだ何もない。<br>なんでも書いていい。</p>';
+      return;
+    }
+    entriesList.innerHTML = entries.map(e => `
+      <div class="obs-entry">
+        <p class="obs-entry-text">${escHtml(e.text)}</p>
+        <span class="obs-entry-date">${formatDate(e.timestamp)}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderObs() {
+    updateCounts();
+    if (observations.length === 0) {
+      obsList.innerHTML = '<p class="obs-empty">まだ観察がない。<br>メモを2件以上書いて「観察してもらう」を押してみて。</p>';
+      return;
+    }
+    obsList.innerHTML = observations.map(o => `
+      <div class="obs-card">
+        <p class="obs-card-text">${escHtml(o.text)}</p>
+        <span class="obs-card-meta">${formatDate(o.timestamp)} · ${o.entryCount}件のメモから</span>
+      </div>
+    `).join("");
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+  }
+
+  function switchView(v) {
+    currentView = v;
+    if (v === "journal") {
+      viewJournal.style.display = "block";
+      viewObs.style.display = "none";
+      btnJournal.classList.add("active");
+      btnObs.classList.remove("active");
+    } else {
+      viewJournal.style.display = "none";
+      viewObs.style.display = "block";
+      btnJournal.classList.remove("active");
+      btnObs.classList.add("active");
+      renderObs();
+    }
+  }
+
+  async function saveEntries() {
+    try { await window.storage.set("journal_entries", JSON.stringify(entries)); } catch {}
+  }
+  async function saveObs() {
+    try { await window.storage.set("journal_observations", JSON.stringify(observations)); } catch {}
+  }
+
+  async function load() {
+    try {
+      const r = await window.storage.get("journal_entries");
+      if (r) entries = JSON.parse(r.value);
+    } catch {}
+    try {
+      const r = await window.storage.get("journal_observations");
+      if (r) observations = JSON.parse(r.value);
+    } catch {}
+    renderEntries();
+    updateCounts();
+  }
+
+  function addEntry() {
+    const txt = input.value.trim();
+    if (!txt) return;
+    entries.unshift({ id: Date.now(), text: txt, timestamp: new Date().toISOString() });
+    input.value = "";
+    addBtn.disabled = true;
+    renderEntries();
+    saveEntries();
+  }
+
+  async function observe() {
+    if (entries.length < 2 || observeBtn.disabled) return;
+    observeBtn.disabled = true;
+    observeBtn.classList.add("pulsing");
+    observeBtn.textContent = "観察中...";
+
+    const lines = entries.slice(0, 60).map(e =>
+      "[" + new Date(e.timestamp).toLocaleDateString("ja-JP") + "] " + e.text
+    ).join("\n");
+
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: `あなたは思考の静かな観察者です。ユーザーが書き留めた断片的なメモや思いつきを読み、その人の思考パターン・興味の傾向・繰り返し現れるテーマ・認知の癖を観察して返してください。
+
+返答のルール：
+- 箇条書きではなく短い散文で書く
+- 評価や判断ではなく観察として書く（「〜という傾向が見えます」「〜が気になっているようです」）
+- 200〜350字程度で簡潔に
+- 意外なつながりや本人が気づいていないかもしれないパターンを指摘する
+- 日本語で返答する`,
+          messages: [{
+            role: "user",
+            content: "最近の思いつきやメモです：\n\n" + lines + "\n\nこれらから、私の思考の傾向や特徴を観察して教えてください。"
+          }]
+        })
+      });
+      const data = await resp.json();
+      const text = (data.content || []).find(c => c.type === "text")?.text || "観察できませんでした。";
+      const newObs = { id: Date.now(), text, timestamp: new Date().toISOString(), entryCount: entries.length };
+      observations.unshift(newObs);
+      await saveObs();
+      switchView("obs");
+    } catch (e) {
+      observeBtn.textContent = "エラーが発生しました。もう一度試してみて。";
+    }
+
+    observeBtn.classList.remove("pulsing");
+    observeBtn.disabled = entries.length < 2;
+    if (entries.length >= 2) observeBtn.textContent = "観察してもらう →";
+  }
+
+  input.addEventListener("input", () => { addBtn.disabled = !input.value.trim(); });
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addEntry(); });
+  addBtn.addEventListener("click", addEntry);
+  observeBtn.addEventListener("click", observe);
+  btnJournal.addEventListener("click", () => switchView("journal"));
+  btnObs.addEventListener("click", () => switchView("obs"));
+
+  load();
+})();
+</script>
