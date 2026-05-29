@@ -1,231 +1,524 @@
-
-<style>
-  .obs-wrap { font-family: var(--font-sans); max-width: 600px; margin: 0 auto; padding: 1.5rem 1rem; }
-  .obs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-  .obs-title { font-size: 14px; font-weight: 500; color: var(--color-text-secondary); letter-spacing: 0.08em; text-transform: uppercase; }
-  .obs-nav { display: flex; gap: 4px; }
-  .obs-navbtn { font-size: 13px; padding: 4px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); cursor: pointer; transition: all 0.15s; }
-  .obs-navbtn.active { background: var(--color-background-secondary); color: var(--color-text-primary); border-color: var(--color-border-secondary); }
-  .obs-navbtn:hover:not(.active) { background: var(--color-background-secondary); }
-  .obs-textarea { width: 100%; min-height: 56px; resize: none; font-size: 15px; line-height: 1.65; padding: 10px 12px; box-sizing: border-box; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); color: var(--color-text-primary); font-family: var(--font-sans); }
-  .obs-textarea:focus { outline: none; border-color: var(--color-border-secondary); }
-  .obs-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
-  .obs-hint { font-size: 12px; color: var(--color-text-tertiary); }
-  .obs-addbtn { font-size: 13px; padding: 5px 14px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-primary); cursor: pointer; }
-  .obs-addbtn:hover { background: var(--color-background-secondary); }
-  .obs-addbtn:disabled { opacity: 0.35; cursor: default; }
-  .obs-divider { border: none; border-top: 0.5px solid var(--color-border-tertiary); margin: 1rem 0; }
-  .obs-observebtn { width: 100%; padding: 10px; font-size: 13px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); cursor: pointer; margin-bottom: 1.5rem; transition: all 0.15s; }
-  .obs-observebtn:hover:not(:disabled) { background: var(--color-background-secondary); color: var(--color-text-primary); border-color: var(--color-border-secondary); }
-  .obs-observebtn:disabled { opacity: 0.35; cursor: default; }
-  .obs-observebtn.pulsing { animation: pulse 1.5s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
-  .obs-entry { padding: 10px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
-  .obs-entry:last-child { border-bottom: none; }
-  .obs-entry-text { font-size: 15px; color: var(--color-text-primary); line-height: 1.65; margin: 0 0 4px 0; }
-  .obs-entry-date { font-size: 11px; color: var(--color-text-tertiary); }
-  .obs-card { padding: 1rem 1.25rem; border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); margin-bottom: 1rem; }
-  .obs-card-text { font-size: 14px; line-height: 1.9; color: var(--color-text-primary); margin: 0 0 10px 0; white-space: pre-wrap; }
-  .obs-card-meta { font-size: 11px; color: var(--color-text-tertiary); }
-  .obs-empty { text-align: center; color: var(--color-text-tertiary); font-size: 14px; padding: 2.5rem 0; line-height: 1.8; }
-  .obs-count-badge { font-size: 11px; color: var(--color-text-tertiary); margin-left: 4px; }
-</style>
-
-<div class="obs-wrap">
-  <h2 class="sr-only">思考の観察日誌 — 自由にメモして、AIにパターンを観察してもらうノート</h2>
-
-  <div class="obs-header">
-    <span class="obs-title">観察日誌</span>
-    <div class="obs-nav">
-      <button class="obs-navbtn active" id="btn-journal">メモ <span class="obs-count-badge" id="entry-count"></span></button>
-      <button class="obs-navbtn" id="btn-obs">観察 <span class="obs-count-badge" id="obs-count"></span></button>
-    </div>
-  </div>
-
-  <div id="view-journal">
-    <textarea class="obs-textarea" id="thought-input" placeholder="思いついたことをそのまま..."></textarea>
-    <div class="obs-row">
-      <span class="obs-hint">⌘ + Enter で追加</span>
-      <button class="obs-addbtn" id="add-btn" disabled>追加</button>
-    </div>
-    <hr class="obs-divider">
-    <button class="obs-observebtn" id="observe-btn" disabled>観察してもらう（2件以上必要）</button>
-    <div id="entries-list"></div>
-  </div>
-
-  <div id="view-obs" style="display:none;">
-    <div id="obs-list"></div>
-  </div>
-</div>
-
-<script>
-(function() {
-  let entries = [];
-  let observations = [];
-  let currentView = "journal";
-
-  const input = document.getElementById("thought-input");
-  const addBtn = document.getElementById("add-btn");
-  const observeBtn = document.getElementById("observe-btn");
-  const entriesList = document.getElementById("entries-list");
-  const obsList = document.getElementById("obs-list");
-  const viewJournal = document.getElementById("view-journal");
-  const viewObs = document.getElementById("view-obs");
-  const btnJournal = document.getElementById("btn-journal");
-  const btnObs = document.getElementById("btn-obs");
-  const entryCount = document.getElementById("entry-count");
-  const obsCount = document.getElementById("obs-count");
-
-  function formatDate(iso) {
-    const d = new Date(iso);
-    return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) +
-      " " + d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-  }
-
-  function updateCounts() {
-    entryCount.textContent = entries.length > 0 ? entries.length : "";
-    obsCount.textContent = observations.length > 0 ? observations.length : "";
-  }
-
-  function renderEntries() {
-    updateCounts();
-    addBtn.disabled = !input.value.trim();
-    observeBtn.disabled = entries.length < 2;
-    if (entries.length < 2) {
-      observeBtn.textContent = "観察してもらう（2件以上必要）";
-    } else {
-      observeBtn.textContent = "観察してもらう →";
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>観察日誌</title>
+  <style>
+    :root {
+      --font-sans: "Helvetica Neue", Arial, "Hiragino Sans", "Yu Gothic", sans-serif;
+      --color-text-primary: #222222;
+      --color-text-secondary: #555555;
+      --color-text-tertiary: #888888;
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f6f7f9;
+      --color-border-secondary: #b8c0cc;
+      --color-border-tertiary: #d9dee7;
+      --border-radius-md: 10px;
+      --border-radius-lg: 16px;
     }
 
-    if (entries.length === 0) {
-      entriesList.innerHTML = '<p class="obs-empty">まだ何もない。<br>なんでも書いていい。</p>';
-      return;
+    * {
+      box-sizing: border-box;
     }
-    entriesList.innerHTML = entries.map(e => `
-      <div class="obs-entry">
-        <p class="obs-entry-text">${escHtml(e.text)}</p>
-        <span class="obs-entry-date">${formatDate(e.timestamp)}</span>
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font-sans);
+      background:
+        radial-gradient(circle at top left, rgba(184, 192, 204, 0.22), transparent 32%),
+        var(--color-background-secondary);
+      color: var(--color-text-primary);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .obs-wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 2rem 1rem 3rem;
+    }
+
+    .obs-shell {
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid rgba(217, 222, 231, 0.9);
+      border-radius: 24px;
+      box-shadow: 0 18px 45px rgba(20, 30, 50, 0.08);
+      padding: 1.25rem;
+    }
+
+    .obs-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .obs-title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .obs-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--color-text-primary);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .obs-subtitle {
+      font-size: 12px;
+      color: var(--color-text-tertiary);
+    }
+
+    .obs-nav {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 999px;
+      background: var(--color-background-secondary);
+      border: 1px solid var(--color-border-tertiary);
+    }
+
+    .obs-navbtn {
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .obs-navbtn.active {
+      background: var(--color-background-primary);
+      color: var(--color-text-primary);
+      box-shadow: 0 2px 8px rgba(20, 30, 50, 0.08);
+    }
+
+    .obs-textarea {
+      width: 100%;
+      min-height: 92px;
+      resize: vertical;
+      font-size: 16px;
+      line-height: 1.75;
+      padding: 14px 16px;
+      border-radius: var(--border-radius-lg);
+      border: 1px solid var(--color-border-tertiary);
+      background: var(--color-background-primary);
+      color: var(--color-text-primary);
+      font-family: var(--font-sans);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .obs-textarea:focus {
+      outline: none;
+      border-color: var(--color-border-secondary);
+      box-shadow: 0 0 0 4px rgba(184, 192, 204, 0.22);
+    }
+
+    .obs-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .obs-hint {
+      font-size: 12px;
+      color: var(--color-text-tertiary);
+    }
+
+    .obs-addbtn,
+    .obs-observebtn,
+    .obs-deletebtn {
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .obs-addbtn {
+      font-size: 13px;
+      padding: 7px 18px;
+      border-radius: 999px;
+      border: 1px solid var(--color-border-secondary);
+      background: var(--color-text-primary);
+      color: white;
+    }
+
+    .obs-addbtn:hover:not(:disabled) {
+      opacity: 0.82;
+      transform: translateY(-1px);
+    }
+
+    .obs-addbtn:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .obs-divider {
+      border: none;
+      border-top: 1px solid var(--color-border-tertiary);
+      margin: 1.25rem 0;
+    }
+
+    .obs-observebtn {
+      width: 100%;
+      padding: 12px;
+      font-size: 14px;
+      border-radius: var(--border-radius-lg);
+      border: 1px solid var(--color-border-tertiary);
+      background: var(--color-background-secondary);
+      color: var(--color-text-secondary);
+      margin-bottom: 1.25rem;
+    }
+
+    .obs-observebtn:hover:not(:disabled) {
+      background: var(--color-text-primary);
+      color: white;
+      border-color: var(--color-text-primary);
+    }
+
+    .obs-observebtn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .obs-entry {
+      padding: 14px 0;
+      border-bottom: 1px solid var(--color-border-tertiary);
+    }
+
+    .obs-entry:last-child {
+      border-bottom: none;
+    }
+
+    .obs-entry-text {
+      font-size: 15px;
+      color: var(--color-text-primary);
+      line-height: 1.75;
+      margin: 0 0 6px 0;
+      word-break: break-word;
+    }
+
+    .obs-entry-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .obs-entry-date {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+    }
+
+    .obs-deletebtn {
+      border: none;
+      background: transparent;
+      color: var(--color-text-tertiary);
+      font-size: 12px;
+      padding: 3px 0;
+    }
+
+    .obs-deletebtn:hover {
+      color: var(--color-text-primary);
+    }
+
+    .obs-card {
+      padding: 1rem 1.1rem;
+      border-radius: var(--border-radius-lg);
+      border: 1px solid var(--color-border-tertiary);
+      background: var(--color-background-secondary);
+      margin-bottom: 1rem;
+    }
+
+    .obs-card-text {
+      font-size: 14px;
+      line-height: 1.9;
+      color: var(--color-text-primary);
+      margin: 0 0 10px 0;
+      white-space: pre-wrap;
+    }
+
+    .obs-card-meta {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+    }
+
+    .obs-empty {
+      text-align: center;
+      color: var(--color-text-tertiary);
+      font-size: 14px;
+      padding: 2.5rem 0;
+      line-height: 1.8;
+    }
+
+    .obs-count-badge {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      margin-left: 4px;
+    }
+
+    @media (max-width: 520px) {
+      .obs-wrap {
+        padding: 1rem 0.75rem 2rem;
+      }
+
+      .obs-shell {
+        border-radius: 18px;
+        padding: 1rem;
+      }
+
+      .obs-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .obs-nav {
+        width: 100%;
+      }
+
+      .obs-navbtn {
+        flex: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="obs-wrap">
+    <section class="obs-shell">
+      <h1 class="sr-only">思考の観察日誌</h1>
+
+      <div class="obs-header">
+        <div class="obs-title-group">
+          <span class="obs-title">観察日誌</span>
+          <span class="obs-subtitle">思いついたことを、軽く置いておく場所</span>
+        </div>
+
+        <div class="obs-nav">
+          <button class="obs-navbtn active" id="btn-journal">メモ <span class="obs-count-badge" id="entry-count"></span></button>
+          <button class="obs-navbtn" id="btn-obs">観察 <span class="obs-count-badge" id="obs-count"></span></button>
+        </div>
       </div>
-    `).join("");
-  }
 
-  function renderObs() {
-    updateCounts();
-    if (observations.length === 0) {
-      obsList.innerHTML = '<p class="obs-empty">まだ観察がない。<br>メモを2件以上書いて「観察してもらう」を押してみて。</p>';
-      return;
-    }
-    obsList.innerHTML = observations.map(o => `
-      <div class="obs-card">
-        <p class="obs-card-text">${escHtml(o.text)}</p>
-        <span class="obs-card-meta">${formatDate(o.timestamp)} · ${o.entryCount}件のメモから</span>
+      <div id="view-journal">
+        <textarea class="obs-textarea" id="thought-input" placeholder="思いついたことをそのまま..."></textarea>
+        <div class="obs-row">
+          <span class="obs-hint">Ctrl / ⌘ + Enter で追加</span>
+          <button class="obs-addbtn" id="add-btn" disabled>追加</button>
+        </div>
+
+        <hr class="obs-divider">
+
+        <button class="obs-observebtn" id="observe-btn" disabled>観察を作る（2件以上必要）</button>
+        <div id="entries-list"></div>
       </div>
-    `).join("");
-  }
 
-  function escHtml(str) {
-    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
-  }
+      <div id="view-obs" style="display:none;">
+        <div id="obs-list"></div>
+      </div>
+    </section>
+  </main>
 
-  function switchView(v) {
-    currentView = v;
-    if (v === "journal") {
-      viewJournal.style.display = "block";
-      viewObs.style.display = "none";
-      btnJournal.classList.add("active");
-      btnObs.classList.remove("active");
-    } else {
-      viewJournal.style.display = "none";
-      viewObs.style.display = "block";
-      btnJournal.classList.remove("active");
-      btnObs.classList.add("active");
-      renderObs();
-    }
-  }
+  <script>
+    (function() {
+      const STORAGE_ENTRIES = "thinking_observatory_entries";
+      const STORAGE_OBS = "thinking_observatory_observations";
 
-  async function saveEntries() {
-    try { await window.storage.set("journal_entries", JSON.stringify(entries)); } catch {}
-  }
-  async function saveObs() {
-    try { await window.storage.set("journal_observations", JSON.stringify(observations)); } catch {}
-  }
+      let entries = [];
+      let observations = [];
 
-  async function load() {
-    try {
-      const r = await window.storage.get("journal_entries");
-      if (r) entries = JSON.parse(r.value);
-    } catch {}
-    try {
-      const r = await window.storage.get("journal_observations");
-      if (r) observations = JSON.parse(r.value);
-    } catch {}
-    renderEntries();
-    updateCounts();
-  }
+      const input = document.getElementById("thought-input");
+      const addBtn = document.getElementById("add-btn");
+      const observeBtn = document.getElementById("observe-btn");
+      const entriesList = document.getElementById("entries-list");
+      const obsList = document.getElementById("obs-list");
+      const viewJournal = document.getElementById("view-journal");
+      const viewObs = document.getElementById("view-obs");
+      const btnJournal = document.getElementById("btn-journal");
+      const btnObs = document.getElementById("btn-obs");
+      const entryCount = document.getElementById("entry-count");
+      const obsCount = document.getElementById("obs-count");
 
-  function addEntry() {
-    const txt = input.value.trim();
-    if (!txt) return;
-    entries.unshift({ id: Date.now(), text: txt, timestamp: new Date().toISOString() });
-    input.value = "";
-    addBtn.disabled = true;
-    renderEntries();
-    saveEntries();
-  }
+      function formatDate(iso) {
+        const d = new Date(iso);
+        return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) +
+          " " + d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+      }
 
-  async function observe() {
-    if (entries.length < 2 || observeBtn.disabled) return;
-    observeBtn.disabled = true;
-    observeBtn.classList.add("pulsing");
-    observeBtn.textContent = "観察中...";
+      function escHtml(str) {
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\n/g, "<br>");
+      }
 
-    const lines = entries.slice(0, 60).map(e =>
-      "[" + new Date(e.timestamp).toLocaleDateString("ja-JP") + "] " + e.text
-    ).join("\n");
+      function updateCounts() {
+        entryCount.textContent = entries.length > 0 ? entries.length : "";
+        obsCount.textContent = observations.length > 0 ? observations.length : "";
+      }
 
-    try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `あなたは思考の静かな観察者です。ユーザーが書き留めた断片的なメモや思いつきを読み、その人の思考パターン・興味の傾向・繰り返し現れるテーマ・認知の癖を観察して返してください。
+      function save() {
+        localStorage.setItem(STORAGE_ENTRIES, JSON.stringify(entries));
+        localStorage.setItem(STORAGE_OBS, JSON.stringify(observations));
+      }
 
-返答のルール：
-- 箇条書きではなく短い散文で書く
-- 評価や判断ではなく観察として書く（「〜という傾向が見えます」「〜が気になっているようです」）
-- 200〜350字程度で簡潔に
-- 意外なつながりや本人が気づいていないかもしれないパターンを指摘する
-- 日本語で返答する`,
-          messages: [{
-            role: "user",
-            content: "最近の思いつきやメモです：\n\n" + lines + "\n\nこれらから、私の思考の傾向や特徴を観察して教えてください。"
-          }]
-        })
+      function load() {
+        try {
+          entries = JSON.parse(localStorage.getItem(STORAGE_ENTRIES) || "[]");
+        } catch {
+          entries = [];
+        }
+
+        try {
+          observations = JSON.parse(localStorage.getItem(STORAGE_OBS) || "[]");
+        } catch {
+          observations = [];
+        }
+
+        renderEntries();
+        renderObs();
+      }
+
+      function renderEntries() {
+        updateCounts();
+        addBtn.disabled = !input.value.trim();
+        observeBtn.disabled = entries.length < 2;
+        observeBtn.textContent = entries.length < 2
+          ? "観察を作る（2件以上必要）"
+          : "観察を作る →";
+
+        if (entries.length === 0) {
+          entriesList.innerHTML = '<p class="obs-empty">まだ何もありません。<br>まずは一言だけ書いてみてください。</p>';
+          return;
+        }
+
+        entriesList.innerHTML = entries.map(e => `
+          <div class="obs-entry">
+            <p class="obs-entry-text">${escHtml(e.text)}</p>
+            <div class="obs-entry-meta">
+              <span class="obs-entry-date">${formatDate(e.timestamp)}</span>
+              <button class="obs-deletebtn" data-id="${e.id}">削除</button>
+            </div>
+          </div>
+        `).join("");
+
+        document.querySelectorAll(".obs-deletebtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const id = Number(btn.dataset.id);
+            entries = entries.filter(e => e.id !== id);
+            save();
+            renderEntries();
+          });
+        });
+      }
+
+      function renderObs() {
+        updateCounts();
+
+        if (observations.length === 0) {
+          obsList.innerHTML = '<p class="obs-empty">まだ観察がありません。<br>メモを2件以上書いたら作れます。</p>';
+          return;
+        }
+
+        obsList.innerHTML = observations.map(o => `
+          <div class="obs-card">
+            <p class="obs-card-text">${escHtml(o.text)}</p>
+            <span class="obs-card-meta">${formatDate(o.timestamp)} · ${o.entryCount}件のメモから</span>
+          </div>
+        `).join("");
+      }
+
+      function switchView(v) {
+        const isJournal = v === "journal";
+
+        viewJournal.style.display = isJournal ? "block" : "none";
+        viewObs.style.display = isJournal ? "none" : "block";
+
+        btnJournal.classList.toggle("active", isJournal);
+        btnObs.classList.toggle("active", !isJournal);
+
+        if (!isJournal) renderObs();
+      }
+
+      function addEntry() {
+        const txt = input.value.trim();
+        if (!txt) return;
+
+        entries.unshift({
+          id: Date.now(),
+          text: txt,
+          timestamp: new Date().toISOString()
+        });
+
+        input.value = "";
+        save();
+        renderEntries();
+      }
+
+      function makeObservationText() {
+        const recent = entries.slice(0, 8);
+        const count = recent.length;
+        const joined = recent.map(e => e.text).join("、");
+
+        if (joined.length < 40) {
+          return `直近の${count}件を見ると、まだ断片は少なめです。ただ、短い言葉をそのまま残そうとしている感じがあります。結論を急ぐより、まず置いてみる使い方が合いそうです。`;
+        }
+
+        return `直近の${count}件を見ると、ひとつの答えにまとめる前に、浮かんだ違和感や気分を残そうとしている流れが見えます。まだ整理前の言葉が多いぶん、後から見返したときに「何に引っかかっていたか」が見つかりやすそうです。`;
+      }
+
+      function observe() {
+        if (entries.length < 2) return;
+
+        const newObs = {
+          id: Date.now(),
+          text: makeObservationText(),
+          timestamp: new Date().toISOString(),
+          entryCount: entries.length
+        };
+
+        observations.unshift(newObs);
+        save();
+        renderObs();
+        switchView("obs");
+      }
+
+      input.addEventListener("input", () => {
+        addBtn.disabled = !input.value.trim();
       });
-      const data = await resp.json();
-      const text = (data.content || []).find(c => c.type === "text")?.text || "観察できませんでした。";
-      const newObs = { id: Date.now(), text, timestamp: new Date().toISOString(), entryCount: entries.length };
-      observations.unshift(newObs);
-      await saveObs();
-      switchView("obs");
-    } catch (e) {
-      observeBtn.textContent = "エラーが発生しました。もう一度試してみて。";
-    }
 
-    observeBtn.classList.remove("pulsing");
-    observeBtn.disabled = entries.length < 2;
-    if (entries.length >= 2) observeBtn.textContent = "観察してもらう →";
-  }
+      input.addEventListener("keydown", e => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          addEntry();
+        }
+      });
 
-  input.addEventListener("input", () => { addBtn.disabled = !input.value.trim(); });
-  input.addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addEntry(); });
-  addBtn.addEventListener("click", addEntry);
-  observeBtn.addEventListener("click", observe);
-  btnJournal.addEventListener("click", () => switchView("journal"));
-  btnObs.addEventListener("click", () => switchView("obs"));
+      addBtn.addEventListener("click", addEntry);
+      observeBtn.addEventListener("click", observe);
+      btnJournal.addEventListener("click", () => switchView("journal"));
+      btnObs.addEventListener("click", () => switchView("obs"));
 
-  load();
-})();
-</script>
+      load();
+    })();
+  </script>
+</body>
+</html>
